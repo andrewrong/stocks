@@ -6,6 +6,7 @@ require (
 	github.com/GreptimeTeam/greptimedb-ingester-go v0.5.1
 	github.com/marcboeker/go-duckdb v1.7.1
 	github.com/markcheno/go-quote v0.0.0-20240225224950-d942c652292c
+	github.com/lib/pq v1.10.9
 )
 
 require (
