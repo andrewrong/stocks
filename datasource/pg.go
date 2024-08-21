@@ -55,7 +55,9 @@ func (client *PgClient) batchInsert(data []*common.StockPrice) error {
 	}
 	stmt, err := tx.Prepare(`INSERT INTO stock_prices                                                                                                                                                                                                                           
          (ts, symbol, open_price, high, low, close_price, volume, currency, stock_name, stock_type)                                                                                                                                                                              
-         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)`)
+         VALUES ($1, $2, $3, $4, $5, $6, $7, $8, $9, $10)
+		 ON CONFLICT (symbol, currency, stock_name, stock_type, ts)
+		 DO UPDATE SET open_price = $3, high = $4, low = $5, close_price = $6, volume = $7`)
 	if err != nil {
 		return err
 	}
@@ -74,4 +76,8 @@ func (client *PgClient) batchInsert(data []*common.StockPrice) error {
 func (client *PgClient) BatchInsert(stockData *quote.Quote, stockInfo *common.StockInfo) error {
 	stockPrices := common.QuoteDataToStockPrices(stockData, stockInfo)
 	return client.batchInsert(stockPrices)
+}
+
+func (c *PgClient) Type() string {
+	return "postgres"
 }

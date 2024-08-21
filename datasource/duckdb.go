@@ -53,7 +53,9 @@ func (client *DuckDBClient) batchInsert(data []*common.StockPrice) error {
 	}
 	stmt, err := tx.Prepare(`INSERT INTO stock_prices 
 		(ts, symbol, open_price, high, low, close_price, volume, currency, stock_name, stock_type) 
-		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)`)
+		VALUES (?, ?, ?, ?, ?, ?, ?, ?, ?, ?)
+		ON CONFLICT
+		DO UPDATE SET open_price = EXCLUDED.open_price, high = EXCLUDED.high, low = EXCLUDED.low, close_price = EXCLUDED.close_price, volume = EXCLUDED.volume`)
 	if err != nil {
 		return err
 	}
@@ -71,4 +73,8 @@ func (client *DuckDBClient) batchInsert(data []*common.StockPrice) error {
 func (c *DuckDBClient) BatchInsert(stockData *quote.Quote, stockInfo *common.StockInfo) error {
 	stockPrices := common.QuoteDataToStockPrices(stockData, stockInfo)
 	return c.batchInsert(stockPrices)
+}
+
+func (c *DuckDBClient) Type() string {
+	return "duckdb"
 }

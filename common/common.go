@@ -113,4 +113,6 @@ func QuoteDataToGPRow(stockData *quote.Quote, stockInfo *StockInfo) []StockDataG
 
 type DbClient interface {
 	BatchInsert(stockData *quote.Quote, stockInfo *StockInfo) error
+	Close() error
+	Type() string
 }

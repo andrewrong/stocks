@@ -27,12 +27,19 @@ func main() {
 		log.Fatalf("Failed to load config: %v", err)
 	}
 
-	//duckdbClient, err := datasource.(config.DataSourceCfg.DuckdbCfg.DbFile)
-	client, err := datasource.NewPgClient(config.DataSourceCfg.PGCfg)
+	duckdbClient, err := datasource.NewDuckDBClient(config.DataSourceCfg.DuckdbCfg.DbFile)
 	if err != nil {
 		log.Fatalf("Failed to create duckdb client: %v", err)
 		return
 	}
+	defer duckdbClient.Close()
+
+	client, err := datasource.NewPgClient(config.DataSourceCfg.PGCfg)
+	if err != nil {
+		log.Fatalf("Failed to create PG client: %v", err)
+		return
+	}
+	defer duckdbClient.Close()
 
 	// 将历史时间字符串变成time.Time
 	startDate, err := time.Parse("2006-01-02", config.ImportHistoryDate)
@@ -65,8 +72,10 @@ func main() {
 	//})
 	//c.Start()
 
+	clients := []common.DbClient{client, duckdbClient}
+
 	// 将历史数据进行import
-	err = importHistoryData(client, config.Stocks)
+	err = importHistoryData(clients, config.Stocks)
 	if err != nil {
 		log.Fatalf("Failed to import history data: %v", err)
 	}
@@ -75,7 +84,7 @@ func main() {
 }
 
 // 将历史数据进行import
-func importHistoryData(client common.DbClient, stocks []common.StockInfo) error {
+func importHistoryData(clients []common.DbClient, stocks []common.StockInfo) error {
 	for _, stock := range stocks {
 		if stock.Symbol == "" {
 			continue
@@ -84,7 +93,7 @@ func importHistoryData(client common.DbClient, stocks []common.StockInfo) error 
 		// 获得最近100年的数据
 		start := time.Now().Add(-100 * 365 * 24 * time.Hour).Format("2006-01-02")
 		end := time.Now().Format("2006-01-02")
-		err := fetchAndStoreStockData(client, stock, start, end)
+		err := fetchAndStoreStockData(clients, stock, start, end)
 		if err != nil {
 			log.Printf("Failed to fetch and store stock data for %s: %v", stock, err)
 			return err
@@ -111,19 +120,22 @@ func loadConfig(filename string) (*Config, error) {
 }
 
 // fetchAndStoreStockData 函数获取并存储股票数据
-func fetchAndStoreStockData(client common.DbClient, stock common.StockInfo, start, end string) error {
+func fetchAndStoreStockData(clients []common.DbClient, stock common.StockInfo, start, end string) error {
 	stockData, err := quote.NewQuoteFromYahoo(stock.Symbol, start, end, quote.Daily, true)
 	if err != nil {
 		log.Printf("Failed to fetch stock data for %s: %v", stock.Symbol, err)
 		return err
 	}
 
-	// 存储股票数据
-	err = client.BatchInsert(&stockData, &stock)
-	if err != nil {
-		log.Printf("Failed to write stock data for %s: %v", stock.Symbol, err)
-		return err
+	for _, client := range clients {
+		// 存储股票数据
+		err = client.BatchInsert(&stockData, &stock)
+		if err != nil {
+			log.Printf("Failed to write stock data for [%v] %s: %v", client.Type(), stock.Symbol, err)
+			continue
+		}
+		fmt.Printf("Stock data for [%v] %s inserted successfully!\n", client.Type(), stock.Symbol)
 	}
-	fmt.Printf("Stock data for %s inserted successfully!\n", stock.Symbol)
+
 	return nil
 }
