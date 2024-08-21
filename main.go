@@ -8,6 +8,7 @@ import (
 	"time"
 
 	"github.com/markcheno/go-quote"
+	cron "github.com/robfig/cron/v3"
 
 	"stock_data/common"
 	"stock_data/datasource"
@@ -41,6 +42,8 @@ func main() {
 	}
 	defer duckdbClient.Close()
 
+	clients := []common.DbClient{client, duckdbClient}
+
 	// 将历史时间字符串变成time.Time
 	startDate, err := time.Parse("2006-01-02", config.ImportHistoryDate)
 	if err != nil {
@@ -49,38 +52,42 @@ func main() {
 	}
 	log.Println("start date:", startDate)
 
-	//history := startDate.UnixMilli()
-	//
-	//// 创建定时任务
-	//c := cron.New()
-	//c.AddFunc("0 17 * * * ", func() {
-	//	log.Printf("now: %s, i will fetch and store stock data", time.Now().Format("2006-01-02 15:04:05"))
-	//	for _, symbol := range config.Stocks {
-	//		start := time.Now().Format("2006-01-02")
-	//		end := time.Now().Add(24 * time.Hour).Format("2006-01-02")
-	//
-	//		if time.Now().UnixMilli() < history {
-	//			log.Printf("skip fetch and store stock data for %s, start:%s, history start:%s", symbol, start, config.ImportHistoryDate)
-	//			continue
-	//		}
-	//
-	//		err := fetchAndStoreStockData(client, symbol, start, end)
-	//		if err != nil {
-	//			log.Printf("Failed to fetch and store stock data for %s: %v", symbol, err)
-	//		}
-	//	}
-	//})
-	//c.Start()
+	history := startDate.UnixMilli()
 
-	clients := []common.DbClient{client, duckdbClient}
+	// 创建定时任务
+	c := cron.New()
+	c.AddFunc("0 8 * * * ", func() {
+		log.Printf("now: %s, i will fetch and store stock data", time.Now().Format("2006-01-02 15:04:05"))
+		for _, symbol := range config.Stocks {
+			start := time.Now().Add(-24 * 2 * time.Hour).Format("2006-01-02")
+			end := time.Now().Format("2006-01-02")
 
-	// 将历史数据进行import
-	err = importHistoryData(clients, config.Stocks)
-	if err != nil {
-		log.Fatalf("Failed to import history data: %v", err)
-	}
+			if time.Now().UnixMilli() < history {
+				log.Printf("skip fetch and store stock data for %s, start:%s, history start:%s", symbol, start, config.ImportHistoryDate)
+				continue
+			}
+
+			err := fetchAndStoreStockData(clients, symbol, start, end)
+			if err != nil {
+				log.Printf("Failed to fetch and store stock data for %s: %v", symbol, err)
+			}
+		}
+	})
+	c.Start()
+
+	//
+	//// 将历史数据进行import
+	//err = importHistoryData(clients, config.Stocks)
+	//if err != nil {
+	//	log.Fatalf("Failed to import history data: %v", err)
+	//}
 	// 保持程序运行
-	select {}
+	ticker := time.NewTicker(time.Hour)
+	select {
+	case <-ticker.C:
+		// 保持程序运行
+		log.Println("ticker.C")
+	}
 }
 
 // 将历史数据进行import
