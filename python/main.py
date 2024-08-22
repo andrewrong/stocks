@@ -1,0 +1,73 @@
+import json
+import time
+import logging
+from datetime import datetime, timedelta
+import yfinance as yf
+from apscheduler.schedulers.background import BackgroundScheduler
+
+from datasource.pg import PgClient
+from datasource.duckdb import DuckDBClient
+
+logging.basicConfig(level=logging.INFO)
+
+
+class Config:
+    def __init__(self, config_file):
+        with open(config_file, 'r') as f:
+            config = json.load(f)
+        self.stocks = config['stocks']
+        self.data_source_cfg = config['data_source']
+        self.import_history_date = config['history_import_date']
+        self.cron_time = config['cron_time']
+
+
+def main():
+    config = Config('config.json')
+
+    duckdb_client = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
+    pg_client = PgClient(config.data_source_cfg['pg_cfg'])
+
+    clients = [pg_client, duckdb_client]
+
+    start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
+    history = start_date.timestamp() * 1000
+
+    scheduler = BackgroundScheduler()
+    scheduler.add_job(func=lambda: fetch_and_store_stock_data(clients, config.stocks, history), trigger='cron',
+                      **config.cron_time)
+    scheduler.start()
+
+    try:
+        while True:
+            time.sleep(3600)
+    except (KeyboardInterrupt, SystemExit):
+        scheduler.shutdown()
+
+
+def fetch_and_store_stock_data(clients, stocks, history):
+    for stock in stocks:
+        start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+        end = datetime.now().strftime('%Y-%m-%d')
+
+        if datetime.now().timestamp() * 1000 < history:
+            logging.info(
+                f"Skipping fetch and store stock data for {stock['symbol']}, start: {start}, history start: {datetime.fromtimestamp(history / 1000).strftime('%Y-%m-%d')}")
+            continue
+
+        stock_data = yf.download(stock['symbol'], start=start, end=end, interval='1d')
+        if stock_data.empty:
+            logging.warning(f"No data fetched for {stock['symbol']}")
+            continue
+
+        for client in clients:
+            data = []
+            for index, row in stock_data.iterrows():
+                data.append((index, stock['symbol'], row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
+                             stock['currency'], stock['name'],
+                             stock['type']))
+            client.batch_insert(data)
+            logging.info(f"Stock data for [{client.type()}] {stock['symbol']} inserted successfully!")
+
+
+if __name__ == "__main__":
+    main()
