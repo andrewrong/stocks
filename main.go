@@ -19,6 +19,7 @@ type Config struct {
 	Stocks            []common.StockInfo `json:"stocks"`
 	DataSourceCfg     common.DataSource  `json:"data_source"`
 	ImportHistoryDate string             `json:"history_import_date"`
+	CronTime          string             `json:"cron_time"`
 }
 
 func main() {
@@ -56,7 +57,7 @@ func main() {
 
 	// 创建定时任务
 	c := cron.New()
-	c.AddFunc("0 8 * * * ", func() {
+	c.AddFunc(config.CronTime, func() {
 		log.Printf("now: %s, i will fetch and store stock data", time.Now().Format("2006-01-02 15:04:05"))
 		for _, symbol := range config.Stocks {
 			start := time.Now().Add(-24 * 2 * time.Hour).Format("2006-01-02")
@@ -121,6 +122,10 @@ func loadConfig(filename string) (*Config, error) {
 	err = json.Unmarshal(data, &config)
 	if err != nil {
 		return nil, err
+	}
+
+	if config.CronTime == "" {
+		config.CronTime = " 0 8 * * *"
 	}
 
 	return &config, nil
