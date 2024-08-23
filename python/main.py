@@ -70,10 +70,10 @@ def import_history_data(clients: list[common.DbClient], stocks: list[common.Stoc
                          row['Volume'],
                          stock.currency, stock.name,
                          common.StockType.string(stock.s_type)))
-        for index, client in clients:
-            client.batch_insert(data)
-            logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
-            calculate_sma(client, stock)
+        for client in clients:
+        client.batch_insert(data)
+        logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
+        calculate_sma(client, stock)
 
 
 def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history):
