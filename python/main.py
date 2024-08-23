@@ -7,7 +7,6 @@ from apscheduler.schedulers.background import BackgroundScheduler
 
 import compute.indicator
 from common import common
-from datasource.pg import PgClient
 from datasource.ddb import DuckDBClient
 
 logging.basicConfig(level=logging.INFO)
@@ -27,27 +26,50 @@ def main():
     config = Config('config.json')
 
     duckdb_client = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
-    pg_client = PgClient(config.data_source_cfg['pg_cfg'])
+    # pg_client = PgClient(config.data_source_cfg['pg_cfg'])
 
-    clients = [pg_client, duckdb_client]
+    clients = [duckdb_client]
 
     start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
     history = start_date.timestamp() * 1000
 
-    scheduler = BackgroundScheduler()
-    scheduler.add_job(func=lambda: fetch_and_store_stock_data(clients, config.stocks, history), trigger='cron',
-                      **config.cron_time)
-    scheduler.start()
+    # scheduler = BackgroundScheduler()
+    # scheduler.add_job(func=lambda: fetch_and_store_stock_data(clients, config.stocks, history), trigger='cron',
+    #                   **config.cron_time)
+    # scheduler.start()
 
-    try:
-        while True:
-            time.sleep(3600)
-            logging.info("Running...")
-    except (KeyboardInterrupt, SystemExit):
-        scheduler.shutdown()
+    # try:
+    #     while True:
+    #         time.sleep(3600)
+    #         logging.info("Running...")
+    # except (KeyboardInterrupt, SystemExit):
+    #     scheduler.shutdown()
+    import_history_data(clients, config.stocks)
 
 
-def fetch_and_store_stock_data(clients, stocks: list[common.StockPrice], history):
+# 写一个导入历史数据的函数
+def import_history_data(clients: list[DuckDBClient], stocks: list[common.StockInfo]):
+    for _, stock in stocks:
+        start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
+        end = datetime.now().strftime('%Y-%m-%d')
+
+        stock_data = yf.download(stock.symbol, start=start, end=end, interval='1d')
+        if stock_data.empty:
+            logging.warning(f"No data fetched for {stock.symbol}")
+            continue
+
+        data = []
+        for index, row in stock_data.iterrows():
+            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
+                         stock.currency, stock.name,
+                         common.StockType.string(stock.s_type)))
+        for index, client in clients:
+            client.batch_insert(data)
+            logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
+            calculate_sma(client, stock)
+
+
+def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history):
     for stock in stocks:
         start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
@@ -66,7 +88,7 @@ def fetch_and_store_stock_data(clients, stocks: list[common.StockPrice], history
         for index, row in stock_data.iterrows():
             data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
                          stock.currency, stock.name,
-                         stock.s_type.string(stock.s_type)))
+                         common.StockType.string(stock.s_type)))
         for client in clients:
             client.batch_insert(data)
             logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
@@ -87,5 +109,6 @@ def calculate_sma(client: common.DbClient, stock: common.StockInfo):
         ))
     client.batch_update(data)
 
+
 if __name__ == "__main__":
-            main()
+    main()
