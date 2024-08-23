@@ -54,8 +54,10 @@ class PgClient:
              """, data)
             self.conn.commit()
 
-    def execute(self, query: list) -> :
-        return self.conn.execute(query)
+    def execute(self, query: str):
+        with self.conn.cursor() as cur:
+            cur.execute(query)
+            return cur
 
     def type(self) -> str:
         return "postgres"
