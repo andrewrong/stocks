@@ -47,7 +47,7 @@ def main():
         scheduler.shutdown()
 
 
-def fetch_and_store_stock_data(clients, stocks, history):
+def fetch_and_store_stock_data(clients, stocks :list[common.StockPrice], history):
     for stock in stocks:
         start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
