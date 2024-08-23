@@ -71,8 +71,20 @@ def fetch_and_store_stock_data(clients, stocks, history):
             client.batch_insert(data)
             logging.info(f"Stock data for [{client.type()}] {stock['symbol']} inserted successfully!")
 
-def calculate_sma(client: common.DBClient, stock: common.StockInfo):
-    smaRusult := compute.indicator.multi_sma(client, stock)
+def calculate_sma(client: common.DbClient, stock: common.StockInfo):
+    sma_results = compute.indicator.multi_sma(client, stock)
+    data = []
+    for i in range(len(sma_results[0])):
+        data.append((
+            sma_results[0][i],  # sma5
+            sma_results[1][i],  # sma20
+            sma_results[2][i],  # sma50
+            sma_results[3][i],  # sma120
+            sma_results[4][i],  # sma250
+            stock.symbol,
+            sma_results[0].index[i]  # ts
+        ))
+    client.batch_update(data)
     
 if __name__ == "__main__":
     main()
