@@ -12,30 +12,29 @@ from datasource.ddb import DuckDBClient
 logging.basicConfig(level=logging.INFO)
 
 
-from collections import namedtuple
-
-StockInfo = namedtuple('StockInfo', ['symbol', 'name', 's_type', 'currency'])
-DataSourceCfg = namedtuple('DataSourceCfg', ['duckdb_cfg'])
-ConfigData = namedtuple('ConfigData', ['stocks', 'data_source_cfg', 'import_history_date', 'cron_time'])
-
 class Config:
     def __init__(self, config_file):
         with open(config_file, 'r') as f:
             config = json.load(f)
-        
-        self.stocks = [StockInfo(**stock) for stock in config['stocks']]
-        self.data_source_cfg = DataSourceCfg(**config['data_source'])
+        self.stocks = []
+
+        for stock in config['stocks']:
+            self.stocks.append(
+                common.StockInfo(stock['symbol'], stock['name'], common.StockType.from_string(stock['type']),
+                                 stock['currency']))
+
         self.import_history_date = config['history_import_date']
         self.cron_time = config['cron_time']
+        self.data_source_cfg = config['data_source']
 
 
 def main():
     config = Config('config.json')
-
-    duckdb_client = DuckDBClient(config.data_source_cfg.duckdb_cfg['db_file'])
+    dbClient: common.DbClient
+    dbClient = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
     # pg_client = PgClient(config.data_source_cfg['pg_cfg'])
 
-    clients = [duckdb_client]
+    clients = [dbClient]
 
     start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
     history = start_date.timestamp() * 1000
@@ -55,7 +54,7 @@ def main():
 
 
 # 写一个导入历史数据的函数
-def import_history_data(clients: list[DuckDBClient], stocks: list[StockInfo]):
+def import_history_data(clients: list[common.DbClient], stocks: list[common.StockInfo]):
     for stock in stocks:
         start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
@@ -67,7 +66,8 @@ def import_history_data(clients: list[DuckDBClient], stocks: list[StockInfo]):
 
         data = []
         for index, row in stock_data.iterrows():
-            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
+            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row["Adj Close"],
+                         row['Volume'],
                          stock.currency, stock.name,
                          common.StockType.string(stock.s_type)))
         for index, client in clients:
@@ -76,7 +76,7 @@ def import_history_data(clients: list[DuckDBClient], stocks: list[StockInfo]):
             calculate_sma(client, stock)
 
 
-def fetch_and_store_stock_data(clients, stocks: list[StockInfo], history):
+def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history):
     for stock in stocks:
         start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
@@ -101,7 +101,7 @@ def fetch_and_store_stock_data(clients, stocks: list[StockInfo], history):
             logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
 
 
-def calculate_sma(client: common.DbClient, stock: StockInfo):
+def calculate_sma(client: common.DbClient, stock: common.StockInfo):
     sma_results = compute.indicator.multi_sma(client, stock)
     data = []
     for i in range(len(sma_results[0])):
