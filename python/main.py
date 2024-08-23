@@ -87,5 +87,5 @@ def calculate_sma(client: common.DbClient, stock: common.StockInfo):
         ))
     client.batch_update(data)
 
-        if __name__ == "__main__":
+if __name__ == "__main__":
             main()
