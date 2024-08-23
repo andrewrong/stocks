@@ -5,8 +5,10 @@ from datetime import datetime, timedelta
 import yfinance as yf
 from apscheduler.schedulers.background import BackgroundScheduler
 
+import compute.indicator
+from common import common
 from datasource.pg import PgClient
-from datasource.duckdb import DuckDBClient
+from datasource.ddb import DuckDBClient
 
 logging.basicConfig(level=logging.INFO)
 
@@ -40,6 +42,7 @@ def main():
     try:
         while True:
             time.sleep(3600)
+            logging.info("Running...")
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 
@@ -59,15 +62,17 @@ def fetch_and_store_stock_data(clients, stocks, history):
             logging.warning(f"No data fetched for {stock['symbol']}")
             continue
 
+        data = []
+        for index, row in stock_data.iterrows():
+            data.append((index, stock['symbol'], row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
+                         stock['currency'], stock['name'],
+                         stock['type']))
         for client in clients:
-            data = []
-            for index, row in stock_data.iterrows():
-                data.append((index, stock['symbol'], row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
-                             stock['currency'], stock['name'],
-                             stock['type']))
             client.batch_insert(data)
             logging.info(f"Stock data for [{client.type()}] {stock['symbol']} inserted successfully!")
 
-
+def calculate_sma(client: common.DBClient, stock: common.StockInfo):
+    smaRusult := compute.indicator.multi_sma(client, stock)
+    
 if __name__ == "__main__":
     main()
