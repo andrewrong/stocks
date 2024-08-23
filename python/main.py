@@ -47,29 +47,29 @@ def main():
         scheduler.shutdown()
 
 
-def fetch_and_store_stock_data(clients, stocks :list[common.StockPrice], history):
+def fetch_and_store_stock_data(clients, stocks: list[common.StockPrice], history):
     for stock in stocks:
         start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
 
         if datetime.now().timestamp() * 1000 < history:
             logging.info(
-                f"Skipping fetch and store stock data for {stock['symbol']}, start: {start}, history start: {datetime.fromtimestamp(history / 1000).strftime('%Y-%m-%d')}")
+                f"Skipping fetch and store stock data for {stock.symbol}, start: {start}, history start: {datetime.fromtimestamp(history / 1000).strftime('%Y-%m-%d')}")
             continue
 
-        stock_data = yf.download(stock['symbol'], start=start, end=end, interval='1d')
+        stock_data = yf.download(stock.symbol, start=start, end=end, interval='1d')
         if stock_data.empty:
-            logging.warning(f"No data fetched for {stock['symbol']}")
+            logging.warning(f"No data fetched for {stock.symbol}")
             continue
 
         data = []
         for index, row in stock_data.iterrows():
-            data.append((index, stock['symbol'], row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
-                         stock['currency'], stock['name'],
-                         stock['type']))
+            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row['Volume'],
+                         stock.currency, stock.name,
+                         stock.s_type.string(stock.s_type)))
         for client in clients:
             client.batch_insert(data)
-            logging.info(f"Stock data for [{client.type()}] {stock['symbol']} inserted successfully!")
+            logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
 
 
 def calculate_sma(client: common.DbClient, stock: common.StockInfo):
