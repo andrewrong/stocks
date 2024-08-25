@@ -1,4 +1,6 @@
 import json
+import os
+import sys
 import time
 import logging
 from datetime import datetime, timedelta
@@ -8,6 +10,7 @@ from apscheduler.schedulers.background import BackgroundScheduler
 import compute.indicator
 from common import common
 from datasource.ddb import DuckDBClient
+from datasource.pg import PgClient
 
 logging.basicConfig(level=logging.INFO)
 
@@ -31,10 +34,11 @@ class Config:
 def main():
     config = Config('config.json')
     dbClient: common.DbClient
+    pgClient: common.DbClient
     dbClient = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
-    # pg_client = PgClient(config.data_source_cfg['pg_cfg'])
+    pgClient = PgClient(config.data_source_cfg['pg_cfg'])
 
-    clients = [dbClient]
+    clients = [dbClient, pgClient]
 
     start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
     history = start_date.timestamp() * 1000
@@ -56,6 +60,7 @@ def main():
 # 写一个导入历史数据的函数
 def import_history_data(clients: list[common.DbClient], stocks: list[common.StockInfo]):
     for stock in stocks:
+        print(f"Fetching stock data for {stock.symbol}")
         start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
 
@@ -70,10 +75,14 @@ def import_history_data(clients: list[common.DbClient], stocks: list[common.Stoc
                          row['Volume'],
                          stock.currency, stock.name,
                          common.StockType.string(stock.s_type)))
-        for client in clients:
-        client.batch_insert(data)
-        logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
-        calculate_sma(client, stock)
+        duckClient = clients[0]
+        pgClient = clients[1]
+        duckClient.batch_insert(data)
+        logging.info(f"Stock data for [{duckClient.type()}] {stock.symbol} inserted successfully!")
+        pgClient.batch_insert(data)
+        logging.info(f"Stock data for [{pgClient.type()}] {stock.symbol} inserted successfully!")
+
+        calculate_sma_with_duckdb(duckClient, pgClient, stock, start, end)
 
 
 def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history):
@@ -101,20 +110,22 @@ def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history)
             logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
 
 
-def calculate_sma(client: common.DbClient, stock: common.StockInfo):
-    sma_results = compute.indicator.multi_sma(client, stock)
+def calculate_sma_with_duckdb(client: common.DbClient, pgClient: common.DbClient, stock: common.StockInfo, start: str,
+                              end: str):
+    sma_results = compute.indicator.multi_sma(client, stock, start, end)
     data = []
-    for i in range(len(sma_results[0])):
+    for i in range(len(sma_results["ts"])):
         data.append((
-            sma_results[0][i],  # sma5
-            sma_results[1][i],  # sma20
-            sma_results[2][i],  # sma50
-            sma_results[3][i],  # sma120
-            sma_results[4][i],  # sma250
+            sma_results["sma"][0][i],  # sma5
+            sma_results["sma"][1][i],  # sma20
+            sma_results["sma"][2][i],  # sma50
+            sma_results["sma"][3][i],  # sma120
+            sma_results["sma"][4][i],  # sma250
             stock.symbol,
-            sma_results[0].index[i]  # ts
+            sma_results['ts'][i]  # ts
         ))
     client.batch_update(data)
+    pgClient.batch_update(data)
 
 
 if __name__ == "__main__":

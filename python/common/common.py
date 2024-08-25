@@ -1,9 +1,10 @@
+from abc import ABC, abstractmethod
 from datetime import datetime
 from typing import List, Dict, Any
 
 
 class StockPrice:
-    def __init__(self, ts: datetime, symbol: str, open_price: float, high: float, low: float, close_price: float,
+    def __init__(self, ts: datetime, symbol: str, open_price: float, high: float, low: float, close_price: float, adj_close : float,
                  volume: float, currency: str, stock_name:
             str, stock_type: str):
         self.ts = ts
@@ -12,6 +13,7 @@ class StockPrice:
         self.high = high
         self.low = low
         self.close_price = close_price
+        self.adj_close = adj_close
         self.volume = volume
         self.currency = currency
         self.stock_name = stock_name
@@ -27,6 +29,16 @@ class StockType:
     @staticmethod
     def string(stock_type):
         return stock_type
+
+    @classmethod
+    def from_string(cls, stock_type_str):
+        stock_type_map = {
+            "INDEX": cls.INDEX,
+            "STOCK": cls.STOCK,
+            "CRYPTO": cls.CRYPTO,
+            "OTHER": cls.OTHER
+        }
+        return stock_type_map.get(stock_type_str)
 
 
 class StockInfo:
@@ -97,12 +109,23 @@ def quote_data_to_gp_row(stock_data: Dict[str, Any], stock_info: StockInfo) -> L
     return rows
 
 
-class DbClient:
-    def batch_insert(self, stock_data: Dict[str, Any], stock_info: StockInfo) -> None:
-        raise NotImplementedError
+class DbClient(ABC):
+    @abstractmethod
+    def batch_insert(self, data: List[Any]) -> None:
+        pass
 
+    @abstractmethod
+    def batch_update(self, data: List[Any]) -> None:
+        pass
+
+    @abstractmethod
     def close(self) -> None:
-        raise NotImplementedError
+        pass
 
+    @abstractmethod
     def type(self) -> str:
-        raise NotImplementedError
+        pass
+
+    @abstractmethod
+    def execute(self, query):
+        pass
