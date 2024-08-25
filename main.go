@@ -84,10 +84,12 @@ func main() {
 	//}
 	// 保持程序运行
 	ticker := time.NewTicker(time.Hour)
-	select {
-	case <-ticker.C:
-		// 保持程序运行
-		log.Println("ticker.C")
+	for {
+		select {
+		case <-ticker.C:
+			// 保持程序运行
+			log.Println("ticker.C")
+		}
 	}
 }
 
