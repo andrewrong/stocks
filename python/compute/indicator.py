@@ -1,5 +1,6 @@
+from datetime import datetime, timedelta
+
 from talib import abstract
-import talib
 
 import common.common
 
@@ -93,11 +94,12 @@ def ema(dataframes: dict, period=30) -> dict:
 def multi_ema(dataframes: dict, periods=None) -> dict:
     """
     Returns:
-        dict: {"ema": list of lists of float, "ts": list of timestamps}
+        dict: {"ema": dict of lists of float, "ts": list of timestamps}
     """
     if periods is None:
         periods = [5, 20, 50, 120, 200]
-    return {"ema": [EMA(dataframes['adj_close'], timeperiod=period) for period in periods], "ts": dataframes['ts']}
+    res = {f"ema{period}": EMA(dataframes['adj_close'], timeperiod=period) for period in periods}
+    return {"ema": res, "ts": dataframes['ts']}
 
 
 def ema5(dataframes: dict) -> dict:
@@ -201,12 +203,8 @@ MACD 是一种广泛使用的技术分析指标，由 Gerald Appel 于 1970 年�
 
 
 def macd(dataframes: dict) -> dict:
-    """
-    Returns:
-        dict: {"macd": list of float, "macd_signal": list of float, "macd_hist": list of float, "ts": list of timestamps}
-    """
     macd, macd_signal, macd_hist = MACD(dataframes['adj_close'])
-    return {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist, "ts": dataframes['ts']}
+    return {"macd": {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist}, "ts": dataframes['ts']}
 
 
 '''
@@ -272,6 +270,19 @@ def calc_multi_indicator(client: common.common.DbClient, stock: common.common.St
                          periods=None) -> dict:
     if periods is None:
         periods = [5, 20, 50, 120, 200]
+    # 如果start 不能大于end - max(periods)，就用end - max(periods)作为start
+    # 将日期字符串转换为 datetime 对象
+    start_dt = datetime.strptime(start, '%Y-%m-%d')
+    end_dt = datetime.strptime(end, '%Y-%m-%d')
+    # 计算最大的时间间隔
+    max_period = max(periods)
+    # 如果 start 不能大于 end - max_period，就用 end - max_period 作为 start
+    if start_dt > end_dt - timedelta(days=max_period):
+        start_dt = end_dt - timedelta(days=max_period)
+    # 将 datetime 对象转换为字符串
+    start = start_dt.strftime('%Y-%m-%d')
+    end = end_dt.strftime('%Y-%m-%d')
+
     query = "select ts, adj_close from stock_prices where symbol = '{}' " \
             "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
         stock.symbol, start, end)
@@ -280,3 +291,16 @@ def calc_multi_indicator(client: common.common.DbClient, stock: common.common.St
     results = {}
 
     m_sma = multi_sma(dataframes, periods)
+    m_ema = multi_ema(dataframes, periods)
+    rsi_data = rsi(dataframes)
+    macd_data = macd(dataframes)
+    bbands_data = bbands(dataframes)
+
+    results['sma'] = m_sma['sma']
+    results['ema'] = m_ema['ema']
+    results['rsi'] = rsi_data['rsi']
+    results['macd'] = macd_data['macd']
+    results['bbands'] = bbands_data['bbands']
+    results["ts"] = dataframes['ts']
+
+    return results
