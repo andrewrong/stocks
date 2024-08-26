@@ -18,7 +18,7 @@ def sma(client: common.common.DbClient, stock: common.common.StockInfo, start: s
 def multi_sma(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str,
               periods=None) -> dict:
     if periods is None:
-        periods = [5, 20, 50, 120, 250]
+        periods = [5, 20, 50, 120, 200]
     query = "select ts, adj_close from stock_prices where symbol = '{}' " \
             "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
         stock.symbol, start, end)
@@ -55,9 +55,8 @@ def bbands(client: common.common.DbClient, stock: common.common.StockInfo, start
     upper, middle, lower = BBANDS(dataframes['adj_close'], timeperiod=20, nbdevup=2, nbdevdn=2, matype=0)
     return {"bbands": {"upper": upper, "middle": middle, "lower": lower}, "ts": dataframes['ts']}
 
-    # 新增的 ema 函数, 这个指标类似于sma，不同的在于对最近的点的权重会更加大一些，会更加敏感，适合做短期交易和趋势分析
 
-
+# 新增的 ema 函数, 这个指标类似于sma，不同的在于对最近的点的权重会更加大一些，会更加敏感，适合做短期交易和趋势分析
 def ema(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str, period=30) -> dict:
     query = "select ts, adj_close from stock_prices where symbol = '{}' " \
             "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
