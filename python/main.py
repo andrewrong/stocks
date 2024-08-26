@@ -34,11 +34,11 @@ class Config:
 def main():
     config = Config('config.json')
     dbClient: common.DbClient
-    pgClient: common.DbClient
+    # pgClient: common.DbClient
     dbClient = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
-    pgClient = PgClient(config.data_source_cfg['pg_cfg'])
+    # pgClient = PgClient(config.data_source_cfg['pg_cfg'])
 
-    clients = [dbClient, pgClient]
+    clients = [dbClient]
 
     start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
     history = start_date.timestamp() * 1000
@@ -76,13 +76,12 @@ def import_history_data(clients: list[common.DbClient], stocks: list[common.Stoc
                          stock.currency, stock.name,
                          common.StockType.string(stock.s_type)))
         duckClient = clients[0]
-        pgClient = clients[1]
         duckClient.batch_insert(data)
         logging.info(f"Stock data for [{duckClient.type()}] {stock.symbol} inserted successfully!")
-        pgClient.batch_insert(data)
-        logging.info(f"Stock data for [{pgClient.type()}] {stock.symbol} inserted successfully!")
+        # pgClient.batch_insert(data)
+        # logging.info(f"Stock data for [{pgClient.type()}] {stock.symbol} inserted successfully!")
 
-        calculate_sma_with_duckdb(duckClient, pgClient, stock, start, end)
+        calculate_sma_with_duckdb(duckClient, stock, start, end)
 
 
 def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history):
@@ -110,22 +109,42 @@ def fetch_and_store_stock_data(clients, stocks: list[common.StockInfo], history)
             logging.info(f"Stock data for [{client.type()}] {stock.symbol} inserted successfully!")
 
 
-def calculate_sma_with_duckdb(client: common.DbClient, pgClient: common.DbClient, stock: common.StockInfo, start: str,
+def calculate_sma_with_duckdb(client: common.DbClient, stock: common.StockInfo, start: str,
                               end: str):
-    sma_results = compute.indicator.multi_sma(client, stock, start, end)
+    result = compute.indicator.calc_multi_indicator(client, stock, start, end)
     data = []
-    for i in range(len(sma_results["ts"])):
+    for k_ts, v in result["data"].items():
         data.append((
-            sma_results["sma"][0][i],  # sma5
-            sma_results["sma"][1][i],  # sma20
-            sma_results["sma"][2][i],  # sma50
-            sma_results["sma"][3][i],  # sma120
-            sma_results["sma"][4][i],  # sma250
-            stock.symbol,
-            sma_results['ts'][i]  # ts
+            v["sma_5"],
+            v["sma_20"],
+            v["sma_50"],
+            v["sma_120"],
+            v["sma_200"],
+            v["ema_5"],
+            v["ema_20"],
+            v["ema_50"],
+            v["ema_120"],
+            v["ema_200"],
+            v["macd"]["macd"],
+            v["macd"]["macd_signal"],
+            v["macd"]['macd_hist'],
+            v["bbands"]["upper"],
+            v["bbands"]["middle"],
+            v["bbands"]["lower"],
+            v['rsi_7'],
+            v['rsi_14'],
+            v['rsi_28'],
+            result["symbol"],
+            k_ts,
         ))
     client.batch_update(data)
-    pgClient.batch_update(data)
+
+def duckdb_to_pg(duckClient: common.DbClient, pgClient: common.DbClient, start: str, end: str):
+    query = "select * from stock_prices where ts >= '{}' and ts <= '{}' and adj_close is not null and adj_close != 0".format(start, end)
+    duckdb_data = duckClient.execute(query).fetchall()
+
+    data = []
+
 
 
 if __name__ == "__main__":
