@@ -1,4 +1,5 @@
 from talib import abstract
+import talib
 
 import common.common
 
@@ -96,3 +97,19 @@ def ema120(client: common.common.DbClient, stock: common.common.StockInfo, start
 
 def ema250(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str) -> dict:
     return ema(client, stock, start, end, 250)
+
+def macd(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str) -> dict:
+    query = "select ts, adj_close from stock_prices where symbol = '{}' " \
+            "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
+        stock.symbol, start, end)
+    dataframes = client.execute(query).fetchdf()
+    macd, macd_signal, macd_hist = talib.MACD(dataframes['adj_close'])
+    return {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist, "ts": dataframes['ts']}
+
+def rsi(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str, period=14) -> dict:
+    query = "select ts, adj_close from stock_prices where symbol = '{}' " \
+            "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
+        stock.symbol, start, end)
+    dataframes = client.execute(query).fetchdf()
+    rsi = talib.RSI(dataframes['adj_close'], timeperiod=period)
+    return {"rsi": rsi, "ts": dataframes['ts']}
