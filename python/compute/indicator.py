@@ -296,11 +296,15 @@ def calc_multi_indicator(client: common.common.DbClient, stock: common.common.St
     macd_data = macd(dataframes)
     bbands_data = bbands(dataframes)
 
-    results['sma'] = m_sma['sma']
-    results['ema'] = m_ema['ema']
-    results['rsi'] = rsi_data['rsi']
-    results['macd'] = macd_data['macd']
-    results['bbands'] = bbands_data['bbands']
-    results["ts"] = dataframes['ts']
+    # 过滤数据，确保返回的数据仅包含在指定区间内的数据点
+    filtered_ts = dataframes['ts'][(dataframes['ts'] >= start) & (dataframes['ts'] <= end)]
+    filtered_indices = filtered_ts.index
+
+    results['sma'] = {key: value[filtered_indices] for key, value in m_sma['sma'].items()}
+    results['ema'] = {key: value[filtered_indices] for key, value in m_ema['ema'].items()}
+    results['rsi'] = rsi_data['rsi'][filtered_indices]
+    results['macd'] = {key: value[filtered_indices] for key, value in macd_data['macd'].items()}
+    results['bbands'] = {key: value[filtered_indices] for key, value in bbands_data['bbands'].items()}
+    results["ts"] = filtered_ts
 
     return results
