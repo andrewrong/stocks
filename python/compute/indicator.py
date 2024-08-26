@@ -11,37 +11,70 @@ RSI = abstract.Function("rsi")
 
 
 def sma(dataframes: dict, period=30) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
     return {"sma": SMA(dataframes['adj_close'], timeperiod=period), "ts": dataframes['ts']}
 
 
 def multi_sma(dataframes: dict, periods=None) -> dict:
+    """
+    Returns:
+        dict: {"sma": dict of lists of float, "ts": list of timestamps}
+    """
     if periods is None:
         periods = [5, 20, 50, 120, 200]
     res = {f"sma{period}": SMA(dataframes['adj_close'], timeperiod=period) for period in periods}
     return {"sma": res, "ts": dataframes['ts']}
 
 
-def sma5(dataframes: dict) -> dict: return sma(dataframes, 5)
+def sma5(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
+    return sma(dataframes, 5)
 
 
 def sma20(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
     return sma(dataframes, 20)
 
 
 def sma50(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
     return sma(dataframes, 50)
 
 
 def sma120(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
     return sma(dataframes, 120)
 
 
 def sma200(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"sma": list of float, "ts": list of timestamps}
+    """
     return sma(dataframes, 200)
 
 
 # 这个指标：Bollinger Bands， 用来检测股票价格的离散程度， 与其它的技术指标不同的是，它不是基于价格的，而是基于价格的波动。
 def bbands(dataframes: dict, period=20, nbdevup=2, nbdevdn=2, matype=0) -> dict:
+    """
+    Returns:
+        dict: {"bbands": {"upper": list of float, "middle": list of float, "lower": list of float}, "ts": list of timestamps}
+    """
     upper, middle, lower = BBANDS(dataframes['adj_close'], timeperiod=period, nbdevup=nbdevup, nbdevdn=nbdevdn,
                                   matype=matype)
     return {"bbands": {"upper": upper, "middle": middle, "lower": lower}, "ts": dataframes['ts']}
@@ -49,33 +82,61 @@ def bbands(dataframes: dict, period=20, nbdevup=2, nbdevdn=2, matype=0) -> dict:
 
 # 新增的 ema 函数, 这个指标类似于sma，不同的在于对最近的点的权重会更加大一些，会更加敏感，适合做短期交易和趋势分析
 def ema(dataframes: dict, period=30) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return {"ema": EMA(dataframes['adj_close'], timeperiod=period), "ts": dataframes['ts']}
 
 
 # 不同周期的 ema 函数
 def multi_ema(dataframes: dict, periods=None) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of lists of float, "ts": list of timestamps}
+    """
     if periods is None:
         periods = [5, 20, 50, 120, 200]
     return {"ema": [EMA(dataframes['adj_close'], timeperiod=period) for period in periods], "ts": dataframes['ts']}
 
 
 def ema5(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return ema(dataframes, 5)
 
 
 def ema20(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return ema(dataframes, 20)
 
 
 def ema50(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return ema(dataframes, 50)
 
 
 def ema120(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return ema(dataframes, 120)
 
 
 def ema200(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"ema": list of float, "ts": list of timestamps}
+    """
     return ema(dataframes, 200)
 
 
@@ -140,6 +201,10 @@ MACD 是一种广泛使用的技术分析指标，由 Gerald Appel 于 1970 年�
 
 
 def macd(dataframes: dict) -> dict:
+    """
+    Returns:
+        dict: {"macd": list of float, "macd_signal": list of float, "macd_hist": list of float, "ts": list of timestamps}
+    """
     macd, macd_signal, macd_hist = MACD(dataframes['adj_close'])
     return {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist, "ts": dataframes['ts']}
 
@@ -195,6 +260,10 @@ RSI 的计算分为以下几个步骤：
 
 
 def rsi(dataframes: dict, period=14) -> dict:
+    """
+    Returns:
+        dict: {"rsi": list of float, "ts": list of timestamps}
+    """
     rsi = RSI(dataframes['adj_close'], timeperiod=period)
     return {"rsi": rsi, "ts": dataframes['ts']}
 
