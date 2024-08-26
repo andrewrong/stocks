@@ -144,6 +144,41 @@ def duckdb_to_pg(duckClient: common.DbClient, pgClient: common.DbClient, start: 
     duckdb_data = duckClient.execute(query).fetchall()
 
     data = []
+    for row in duckdb_data:
+        data.append((
+            row[0],  # ts
+            row[1],  # symbol
+            row[2],  # open_price
+            row[3],  # high
+            row[4],  # low
+            row[5],  # close_price
+            row[6],  # adj_close
+            row[7],  # volume
+            row[8],  # currency
+            row[9],  # stock_name
+            row[10], # stock_type
+            row[11], # sma5
+            row[12], # sma20
+            row[13], # sma50
+            row[14], # sma120
+            row[15], # sma200
+            row[16], # ema5
+            row[17], # ema20
+            row[18], # ema50
+            row[19], # ema120
+            row[20], # ema200
+            row[21], # macd
+            row[22], # macd_signal
+            row[23], # macd_hist
+            row[24], # rsi7
+            row[25], # rsi14
+            row[26], # rsi28
+            row[27], # bb_upper
+            row[28], # bb_middle
+            row[29], # bb_lower
+        ))
+
+    pgClient.batch_insert(data)
 
 
 
