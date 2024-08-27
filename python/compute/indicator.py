@@ -1,5 +1,6 @@
 from datetime import datetime, timedelta
 
+import pandas as pd
 from talib import abstract
 
 import common.common
@@ -26,7 +27,7 @@ def multi_sma(dataframes: dict, periods=None) -> dict:
     """
     if periods is None:
         periods = [5, 20, 50, 120, 200]
-    res = {f"sma{period}": SMA(dataframes['adj_close'], timeperiod=period) for period in periods}
+    res = {f"sma_{period}": SMA(dataframes['adj_close'], timeperiod=period) for period in periods}
     return {"sma": res, "ts": dataframes['ts']}
 
 
@@ -71,7 +72,7 @@ def sma200(dataframes: dict) -> dict:
 
 
 # 这个指标：Bollinger Bands， 用来检测股票价格的离散程度， 与其它的技术指标不同的是，它不是基于价格的，而是基于价格的波动。
-def bbands(dataframes: dict, period=20, nbdevup=2, nbdevdn=2, matype=0) -> dict:
+def bbands(dataframes: dict, period=20, nbdevup=2.0, nbdevdn=2.0, matype=0) -> dict:
     """
     Returns:
         dict: {"bbands": {"upper": list of float, "middle": list of float, "lower": list of float}, "ts": list of timestamps}
@@ -98,7 +99,7 @@ def multi_ema(dataframes: dict, periods=None) -> dict:
     """
     if periods is None:
         periods = [5, 20, 50, 120, 200]
-    res = {f"ema{period}": EMA(dataframes['adj_close'], timeperiod=period) for period in periods}
+    res = {f"ema_{period}": EMA(dataframes['adj_close'], timeperiod=period) for period in periods}
     return {"ema": res, "ts": dataframes['ts']}
 
 
@@ -202,8 +203,9 @@ MACD 是一种广泛使用的技术分析指标，由 Gerald Appel 于 1970 年�
 '''
 
 
-def macd(dataframes: dict) -> dict:
-    macd, macd_signal, macd_hist = MACD(dataframes['adj_close'])
+def macd(dataframes: pd.DataFrame, fastperiod: int = 12, slowperiod: int = 26, signalperiod: int = 9) -> dict:
+    macd, macd_signal, macd_hist = MACD(dataframes['adj_close'], fastperiod=fastperiod, slowperiod=slowperiod,
+                                        signalperiod=signalperiod)
     return {"macd": {"macd": macd, "macd_signal": macd_signal, "macd_hist": macd_hist}, "ts": dataframes['ts']}
 
 
@@ -266,45 +268,67 @@ def rsi(dataframes: dict, period=14) -> dict:
     return {"rsi": rsi, "ts": dataframes['ts']}
 
 
+def multi_rsi(dataframes: pd.DataFrame, periods=[7, 14, 28]) -> dict:
+    """
+    Returns:
+        dict: {"rsi": dict of lists of float, "ts": list of timestamps}
+    """
+    res = {f"rsi_{period}": RSI(dataframes['adj_close'], timeperiod=period) for period in periods}
+    return {"rsi": res, "ts": dataframes['ts']}
+
+
 def calc_multi_indicator(client: common.common.DbClient, stock: common.common.StockInfo, start: str, end: str,
                          periods=None) -> dict:
     if periods is None:
         periods = [5, 20, 50, 120, 200]
+
     # 如果start 不能大于end - max(periods)，就用end - max(periods)作为start
     # 将日期字符串转换为 datetime 对象
     start_dt = datetime.strptime(start, '%Y-%m-%d')
     end_dt = datetime.strptime(end, '%Y-%m-%d')
     # 计算最大的时间间隔
-    max_period = max(periods)
+    max_period = max(periods) + 100
     # 如果 start 不能大于 end - max_period，就用 end - max_period 作为 start
     if start_dt > end_dt - timedelta(days=max_period):
         start_dt = end_dt - timedelta(days=max_period)
+
     # 将 datetime 对象转换为字符串
-    start = start_dt.strftime('%Y-%m-%d')
+    start_new = start_dt.strftime('%Y-%m-%d')
     end = end_dt.strftime('%Y-%m-%d')
 
     query = "select ts, adj_close from stock_prices where symbol = '{}' " \
             "and adj_close is not null and adj_close != 0 and ts >= '{}' and ts <= '{}' order by ts".format(
-        stock.symbol, start, end)
+        stock.symbol, start_new, end)
     dataframes = client.execute(query).fetchdf()
-
-    results = {}
 
     m_sma = multi_sma(dataframes, periods)
     m_ema = multi_ema(dataframes, periods)
-    rsi_data = rsi(dataframes)
+    rsi_data = multi_rsi(dataframes, [7, 14, 28])
     macd_data = macd(dataframes)
     bbands_data = bbands(dataframes)
 
-    # 过滤数据，确保返回的数据仅包含在指定区间内的数据点
-    filtered_ts = dataframes['ts'][(dataframes['ts'] >= start) & (dataframes['ts'] <= end)]
-    filtered_indices = filtered_ts.index
+    datas = {"data": {}, "symbol": stock.symbol}
 
-    results['sma'] = {key: value[filtered_indices] for key, value in m_sma['sma'].items()}
-    results['ema'] = {key: value[filtered_indices] for key, value in m_ema['ema'].items()}
-    results['rsi'] = rsi_data['rsi'][filtered_indices]
-    results['macd'] = {key: value[filtered_indices] for key, value in macd_data['macd'].items()}
-    results['bbands'] = {key: value[filtered_indices] for key, value in bbands_data['bbands'].items()}
-    results["ts"] = filtered_ts
+    start_dt = datetime.strptime(start, '%Y-%m-%d')
+    end_dt = datetime.strptime(end, '%Y-%m-%d')
 
-    return results
+    for index, ts in dataframes['ts'].items():
+        if start_dt <= ts <= end_dt:
+            datas['data'][ts] = {
+                'macd': {
+                    "macd": macd_data['macd']["macd"][index],
+                    "macd_hist": macd_data["macd"]['macd_hist'][index],
+                    "macd_signal": macd_data["macd"]['macd_signal'][index]
+                },
+                'bbands': {
+                    "upper": bbands_data['bbands']["upper"][index],
+                    "middle": bbands_data['bbands']["middle"][index],
+                    "lower": bbands_data['bbands']["lower"][index]
+                }
+            }
+            for period in periods:
+                datas['data'][ts][f'sma_{period}'] = m_sma["sma"][f'sma_{period}'][index]
+                datas['data'][ts][f'ema_{period}'] = m_ema["ema"][f'ema_{period}'][index]
+            for period in [7, 14, 28]:
+                datas['data'][ts][f'rsi_{period}'] = rsi_data["rsi"][f'rsi_{period}'][index]
+    return datas

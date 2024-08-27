@@ -19,7 +19,6 @@ class StockPrice:
         self.stock_name = stock_name
         self.stock_type = stock_type
 
-
 class StockType:
     INDEX = "INDEX"
     STOCK = "STOCK"

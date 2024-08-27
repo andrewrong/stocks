@@ -29,7 +29,24 @@ class DuckDBClient(common.DbClient):
                  sma20 DOUBLE,
                  sma50 DOUBLE,
                  sma120 DOUBLE,
-                 sma250 DOUBLE,
+                 sma200 DOUBLE,
+                 ema5 DOUBLE,
+                 ema20 DOUBLE,
+                 ema50 DOUBLE,
+                 ema120 DOUBLE,
+                 ema200 DOUBLE,
+                 
+                 macd DOUBLE,
+                 macd_signal DOUBLE,
+                 macd_hist DOUBLE,
+                 rsi7 DOUBLE,
+                 rsi14 DOUBLE,
+                 rsi28 DOUBLE,
+                 
+                 bb_upper DOUBLE,
+                 bb_middle DOUBLE,
+                 bb_lower DOUBLE,
+                 
                  PRIMARY KEY (symbol, currency, stock_name, stock_type, ts)
              )
          """)
@@ -57,7 +74,9 @@ class DuckDBClient(common.DbClient):
             with self.conn.cursor() as cur:
                 cur.executemany("""
                  UPDATE stock_prices
-                 SET sma5 = ?, sma20 = ?, sma50 = ?, sma120 = ?, sma250 = ?
+                 SET sma5 = ?, sma20 = ?, sma50 = ?, sma120 = ?, sma200 = ?, ema5 = ?, ema20 = ?, ema50 = ?, ema120 = ?, 
+                 ema200 = ?, macd = ?, macd_signal = ?, macd_hist = ?, bb_upper = ?, bb_middle = ?, bb_lower = ?,
+                 rsi7 = ?, rsi14 = ?, rsi28 = ?
                  WHERE symbol = ? AND ts = ?
              """, data)
                 print(f"{self.type()} batch update success, num of data: {len(data)}")
