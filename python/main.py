@@ -2,6 +2,7 @@ import logging
 from datetime import datetime, timedelta
 import yfinance as yf
 from apscheduler.schedulers.background import BackgroundScheduler
+import time
 
 import compute.indicator
 from common import common

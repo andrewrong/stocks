@@ -132,7 +132,7 @@ def token_required(f):
 @token_required
 def create_stock():
     data = request.get_json()
-    new_stock = StockInfo(data['symbol'], data['name'], common.StockType.from_string(data['type']), data['currency'])
+    new_stock = StockInfo(data['symbol'], data['name'], StockType.from_string(data['type']), data['currency'])
     # Save new_stock to database
     return jsonify({'message': 'New stock created'}), 201
 
