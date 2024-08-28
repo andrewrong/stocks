@@ -68,6 +68,31 @@ class DuckDBClient(common.DbClient):
         except duckdb.Error as e:
             print(f"batch insert error: {e}")
 
+    def store_config(self, config: dict) -> None:
+        try:
+            with self.conn.cursor() as cur:
+                for key, value in config.items():
+                    cur.execute("""
+                        INSERT INTO config (key, value)
+                        VALUES (?, ?)
+                        ON CONFLICT (key)
+                        DO UPDATE SET value = EXCLUDED.value
+                    """, (key, value))
+                print("Config stored successfully")
+        except duckdb.Error as e:
+            print(f"Error storing config: {e}")
+
+    def load_config(self) -> dict:
+        try:
+            with self.conn.cursor() as cur:
+                cur.execute("SELECT key, value FROM config")
+                config_data = cur.fetchall()
+                config = {row[0]: row[1] for row in config_data}
+                return config
+        except duckdb.Error as e:
+            print(f"Error loading config: {e}")
+            return {}
+
     def batch_update(self, data: List[Any]) -> None:
 
         try:

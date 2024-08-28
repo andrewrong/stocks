@@ -108,6 +108,56 @@ def quote_data_to_gp_row(stock_data: Dict[str, Any], stock_info: StockInfo) -> L
     return rows
 
 
+from flask import Flask, request, jsonify
+from functools import wraps
+import jwt
+
+app = Flask(__name__)
+app.config['SECRET_KEY'] = 'your_secret_key'
+
+def token_required(f):
+    @wraps(f)
+    def decorated(*args, **kwargs):
+        token = request.headers.get('Authorization')
+        if not token:
+            return jsonify({'message': 'Token is missing'}), 403
+        try:
+            data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+        except:
+            return jsonify({'message': 'Token is invalid'}), 403
+        return f(*args, **kwargs)
+    return decorated
+
+@app.route('/stock', methods=['POST'])
+@token_required
+def create_stock():
+    data = request.get_json()
+    new_stock = StockInfo(data['symbol'], data['name'], common.StockType.from_string(data['type']), data['currency'])
+    # Save new_stock to database
+    return jsonify({'message': 'New stock created'}), 201
+
+@app.route('/stock/<symbol>', methods=['GET'])
+@token_required
+def get_stock(symbol):
+    # Retrieve stock from database
+    stock = None  # Replace with actual retrieval logic
+    if not stock:
+        return jsonify({'message': 'Stock not found'}), 404
+    return jsonify(stock.__dict__), 200
+
+@app.route('/stock/<symbol>', methods=['PUT'])
+@token_required
+def update_stock(symbol):
+    data = request.get_json()
+    # Update stock in database
+    return jsonify({'message': 'Stock updated'}), 200
+
+@app.route('/stock/<symbol>', methods=['DELETE'])
+@token_required
+def delete_stock(symbol):
+    # Delete stock from database
+    return jsonify({'message': 'Stock deleted'}), 200
+
 class DbClient(ABC):
     @abstractmethod
     def batch_insert(self, data: List[Any]) -> None:

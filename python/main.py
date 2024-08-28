@@ -1,7 +1,3 @@
-import json
-import os
-import sys
-import time
 import logging
 from datetime import datetime, timedelta
 import yfinance as yf
@@ -16,19 +12,28 @@ logging.basicConfig(level=logging.INFO)
 
 
 class Config:
-    def __init__(self, config_file):
-        with open(config_file, 'r') as f:
-            config = json.load(f)
+    def __init__(self, duckdb_client):
         self.stocks = []
+        self.import_history_date = None
+        self.cron_time = None
+        self.data_source_cfg = None
+        self.load_config_from_db(duckdb_client)
 
-        for stock in config['stocks']:
-            self.stocks.append(
-                common.StockInfo(stock['symbol'], stock['name'], common.StockType.from_string(stock['type']),
-                                 stock['currency']))
-
-        self.import_history_date = config['history_import_date']
-        self.cron_time = config['cron_time']
-        self.data_source_cfg = config['data_source']
+    def load_config_from_db(self, duckdb_client):
+        query = "SELECT * FROM config"
+        config_data = duckdb_client.execute(query).fetchall()
+        for row in config_data:
+            if row[0] == 'stocks':
+                for stock in row[1]:
+                    self.stocks.append(
+                        common.StockInfo(stock['symbol'], stock['name'], common.StockType.from_string(stock['type']),
+                                         stock['currency']))
+            elif row[0] == 'history_import_date':
+                self.import_history_date = row[1]
+            elif row[0] == 'cron_time':
+                self.cron_time = row[1]
+            elif row[0] == 'data_source':
+                self.data_source_cfg = row[1]
 
 
 def main():
@@ -88,16 +93,12 @@ def import_history_data(duckClient: common.DbClient, pgClient: common.DbClient, 
         # duckdb_to_pg(duckClient, pgClient, start, end)
 
 
-def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClient, stocks: list[common.StockInfo],
-                               history):
+def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClient, stocks: list[common.StockInfo]):
     for stock in stocks:
-        start = (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+        query = f"SELECT MAX(ts) FROM stock_prices WHERE symbol = '{stock.symbol}'"
+        result = client.execute(query).fetchone()
+        start = result[0].strftime('%Y-%m-%d') if result[0] else (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
-
-        if datetime.now().timestamp() * 1000 < history:
-            logging.info(
-                f"Skipping fetch and store stock data for {stock.symbol}, start: {start}, history start: {datetime.fromtimestamp(history / 1000).strftime('%Y-%m-%d')}")
-            continue
 
         stock_data = yf.download(stock.symbol, start=start, end=end, interval='1d')
         if stock_data.empty:
