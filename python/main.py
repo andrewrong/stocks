@@ -1,49 +1,54 @@
+import json
 import logging
+import time
 from datetime import datetime, timedelta
 import yfinance as yf
 from apscheduler.schedulers.background import BackgroundScheduler
-import time
 
 import compute.indicator
 from common import common
 from datasource.ddb import DuckDBClient
 from datasource.pg import PgClient
+from flask import Flask, request, jsonify, g
+from functools import wraps
+import jwt
 
 logging.basicConfig(level=logging.INFO)
 
 
 class Config:
-    def __init__(self, duckdb_client):
+    def __init__(self, config_file):
+        with open(config_file, 'r') as f:
+            config = json.load(f)
         self.stocks = []
-        self.import_history_date = None
-        self.cron_time = None
-        self.data_source_cfg = None
-        self.load_config_from_db(duckdb_client)
+        self.import_history_date = config['history_import_date']
+        self.cron_time = config['cron_time']
+        self.data_source_cfg = config['data_source']
+        self.http_token = config['http_token']
+
+        duckdb_client = DuckDBClient(config['data_source']['duckdb_cfg']['db_file'])
+        try:
+            self.load_config_from_db(duckdb_client)
+        finally:
+            duckdb_client.close()
 
     def load_config_from_db(self, duckdb_client):
-        query = "SELECT * FROM config"
-        config_data = duckdb_client.execute(query).fetchall()
-        for row in config_data:
-            if row[0] == 'stocks':
-                for stock in row[1]:
-                    self.stocks.append(
-                        common.StockInfo(stock['symbol'], stock['name'], common.StockType.from_string(stock['type']),
-                                         stock['currency']))
-            elif row[0] == 'history_import_date':
-                self.import_history_date = row[1]
-            elif row[0] == 'cron_time':
-                self.cron_time = row[1]
-            elif row[0] == 'data_source':
-                self.data_source_cfg = row[1]
+        query = "SELECT * FROM stock_info"
+        stock_data = duckdb_client.execute(query).fetchall()
+        for row in stock_data:
+            if not row[4]:
+                logging.info("Invalid stock: %s", row['symbol'])
+                continue
+            self.stocks.append(
+                common.StockInfo(row[0], row[1], common.StockType.from_string(row[2]),
+                                 row[3]))
+            logging.info("Loaded stock: %s", row[0])
 
 
 def main():
     config = Config('config.json')
-    dbClient: common.DbClient
-    # pgClient: common.DbClient
     dbClient = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
     pgClient = PgClient(config.data_source_cfg['pg_cfg'])
-
     start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
     history = start_date.timestamp() * 1000
 
@@ -60,10 +65,8 @@ def main():
     except (KeyboardInterrupt, SystemExit):
         scheduler.shutdown()
 
-    # start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
-    # end = datetime.now().strftime('%Y-%m-%d')
-    # for stock in config.stocks:
-    #     duckdb_to_pg(dbClient, pgClient, stock, start, end)
+    # app = create_http_app(dbClient, config.http_token)
+    # app.run(host='0.0.0.0', port=4501, debug=True)
 
 
 # 写一个导入历史数据的函数
@@ -98,8 +101,11 @@ def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClien
     for stock in stocks:
         query = f"SELECT MAX(ts) FROM stock_prices WHERE symbol = '{stock.symbol}'"
         result = client.execute(query).fetchone()
-        start = result[0].strftime('%Y-%m-%d') if result[0] else (datetime.now() - timedelta(days=2)).strftime('%Y-%m-%d')
+        start = result[0].strftime('%Y-%m-%d') if result[0] else (datetime.now() - timedelta(days=2)).strftime(
+            '%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
+
+        logging.info(f"Fetching stock data for {stock.symbol} from {start} to {end}")
 
         stock_data = yf.download(stock.symbol, start=start, end=end, interval='1d')
         if stock_data.empty:
@@ -108,7 +114,8 @@ def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClien
 
         data = []
         for index, row in stock_data.iterrows():
-            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row["Adj Close"], row['Volume'],
+            data.append((index, stock.symbol, row['Open'], row['High'], row['Low'], row['Close'], row["Adj Close"],
+                         row['Volume'],
                          stock.currency, stock.name,
                          common.StockType.string(stock.s_type)))
         client.batch_insert(data)
@@ -198,6 +205,72 @@ def duckdb_to_pg(duckClient: common.DbClient, pgClient: common.DbClient, stock: 
 
     pgClient.batch_insert(data)
     logging.info(f"Stock data for [{pgClient.type()}] {stock.symbol} inserted successfully!")
+
+
+# def create_http_app(duckdb_client: common.DbClient, token: str) -> Flask:
+#     app = Flask(__name__)
+#     app.config['SECRET_KEY'] = token
+#     app.config['duck_client'] = duckdb_client
+#
+#     @app.before_request
+#     def before_request():
+#         # 每个请求开始时将客户端赋值给 g 对象
+#         if 'db' not in g:
+#             g.db = app.config['duck_client']
+#
+#     def token_required(f):
+#         @wraps(f)
+#         def decorated(*args, **kwargs):
+#             token = request.headers.get('Authorization')
+#             if not token:
+#                 return jsonify({'message': 'Token is missing'}), 403
+#             try:
+#                 data = jwt.decode(token, app.config['SECRET_KEY'], algorithms=["HS256"])
+#             except:
+#                 return jsonify({'message': 'Token is invalid'}), 403
+#             return f(*args, **kwargs)
+#
+#         return decorated
+#
+#     @app.route('/stock', methods=['POST'])
+#     @token_required
+#     def create_stock():
+#         data = request.get_json()
+#         infos = [(data['symbol'], data['name'], data['type'], data['currency'], True)]
+#         # Save new_stock to database
+#         g.db.batch_insert_stockinfo(infos)
+#         return jsonify({'message': 'New stock created'}), 201
+#
+#     @app.route('/stock/<symbol>', methods=['GET'])
+#     @token_required
+#     def get_stock(symbol):
+#         stock = g.db.execute("SELECT * FROM stock_info WHERE symbol = ?", (symbol,)).fetchone()
+#         if not stock:
+#             return jsonify({'message': 'Stock not found'}), 404
+#         return jsonify(stock.__dict__), 200
+#
+#     @app.route('/stock/<symbol>', methods=['PUT'])
+#     @token_required
+#     def update_stock(symbol):
+#         data = request.get_json()
+#         # Update stock in database
+#         infos = [(data['symbol'], data['name'], data['type'], data['currency'], True)]
+#         # Save new_stock to database
+#         g.db.batch_insert_stockinfo(infos)
+#
+#         return jsonify({'message': 'Stock updated'}), 200
+#
+#     @app.route('/stock/<symbol>', methods=['DELETE'])
+#     @token_required
+#     def delete_stock(symbol):
+#         data = g.db.execute("select * from stock_info where symbol = ?", (symbol,)).fetchone()
+#         if not data:
+#             return jsonify({'message': 'Stock not found'}), 404
+#         data['valid'] = False
+#         g.db.batch_update([(data['symbol'], data['name'], data['type'], data['currency'], data['valid'])])
+#         return jsonify({'message': 'Stock deleted'}), 200
+#
+#     return app
 
 
 if __name__ == "__main__":

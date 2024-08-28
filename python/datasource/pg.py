@@ -60,6 +60,9 @@ class PgClient(common.DbClient):
     def close(self) -> None:
         self.conn.close()
 
+    def batch_insert_stockinfo(self, data: list) -> None:
+        pass
+
     def batch_insert(self, data: list) -> None:
         try:
             with self.conn.cursor() as cur:

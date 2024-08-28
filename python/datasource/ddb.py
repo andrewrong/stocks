@@ -6,8 +6,8 @@ from common import common
 
 
 class DuckDBClient(common.DbClient):
-    def __init__(self, db_file_path):
-        self.conn = duckdb.connect(database=db_file_path)
+    def __init__(self, db_file_path, readonly=False):
+        self.conn = duckdb.connect(database=db_file_path, read_only=readonly)
         self._create_table()
 
     def _create_table(self):
@@ -50,9 +50,33 @@ class DuckDBClient(common.DbClient):
                  PRIMARY KEY (symbol, currency, stock_name, stock_type, ts)
              )
          """)
+        self.conn.execute("""
+             CREATE TABLE IF NOT EXISTS stock_info (
+                 symbol VARCHAR,
+                 name VARCHAR,
+                 type VARCHAR,
+                 currency VARCHAR,
+                 valid BOOLEAN,
+
+                 PRIMARY KEY (symbol)
+             )
+         """)
 
     def close(self):
         self.conn.close()
+
+    def batch_insert_stockinfo(self, data: List[Any]) -> None:
+        try:
+            with self.conn.cursor() as cur:
+                cur.executemany("""
+                    INSERT INTO stock_info (symbol, name, type, currency, valid)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT (symbol)
+                    DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, currency = EXCLUDED.currency, valid = EXCLUDED.valid
+                """, data)
+                print(f"{self.type()} batch stockinfo insert success, num of data: {len(data)}")
+        except duckdb.Error as e:
+            print(f"batch insert error: {e}")
 
     def batch_insert(self, data: List[Any]) -> None:
         try:
@@ -82,16 +106,6 @@ class DuckDBClient(common.DbClient):
         except duckdb.Error as e:
             print(f"Error storing config: {e}")
 
-    def load_config(self) -> dict:
-        try:
-            with self.conn.cursor() as cur:
-                cur.execute("SELECT key, value FROM config")
-                config_data = cur.fetchall()
-                config = {row[0]: row[1] for row in config_data}
-                return config
-        except duckdb.Error as e:
-            print(f"Error loading config: {e}")
-            return {}
 
     def batch_update(self, data: List[Any]) -> None:
 
