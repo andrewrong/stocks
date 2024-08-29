@@ -106,7 +106,7 @@ def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClien
         result = client.execute(query).fetchone()
         start = result[0].strftime('%Y-%m-%d') if result[0] else (datetime.now() - timedelta(days=2)).strftime(
             '%Y-%m-%d')
-        end = datetime.now().strftime('%Y-%m-%d')
+        end = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
 
         logging.info(f"Fetching stock data for {stock.symbol} from {start} to {end}")
 
