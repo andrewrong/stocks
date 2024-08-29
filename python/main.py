@@ -56,7 +56,7 @@ def main():
     history = start_date.timestamp() * 1000
 
     scheduler = BackgroundScheduler()
-    scheduler.add_job(func=lambda: fetch_and_store_stock_data(dbClient, pgClient, config.stocks, history),
+    scheduler.add_job(func=lambda: fetch_and_store_stock_data(dbClient, pgClient, config.stocks),
                       trigger='cron',
                       **config.cron_time)
     scheduler.start()
