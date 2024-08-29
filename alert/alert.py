@@ -13,7 +13,12 @@ class RuleItem:
 
     def evaluate(self) -> bool:
         # 这里需要实现具体的评估逻辑
-        pass
+        if self.condition['type'] == 'normal_threshold':
+            if self.condition['value'] == 'A < B':
+                return self.A['value'] < self.B['threshold']
+            elif self.condition['value'] == 'A > B':
+                return self.A['value'] > self.B['threshold']
+        return False
 
 class Rule:
     def __init__(self, name: str, ruleItems: Dict[str, RuleItem], equation: str, sender: Dict[str, Any]):
@@ -24,11 +29,18 @@ class Rule:
 
     def evaluate(self) -> bool:
         # 这里需要实现具体的评估逻辑
-        pass
+        for key, ruleItem in self.ruleItems.items():
+            if not ruleItem.evaluate():
+                return False
+        return True
 
     def send_alert(self, msg: str):
         # 这里需要实现具体的报警发送逻辑
-        pass
+        if self.sender['type'] == 'telegram':
+            token = self.sender['config']['token']
+            chat_id = self.sender['config']['chat_id']
+            # 这里需要实现具体的 Telegram 发送逻辑
+            print(f"Sending to Telegram: {msg}")
 
 def load_rule_from_json(json_str: str) -> Rule:
     data = json.loads(json_str)
