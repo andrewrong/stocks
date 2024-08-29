@@ -1,3 +1,4 @@
+import logging
 from abc import ABC
 from typing import Any, List
 
@@ -74,9 +75,9 @@ class DuckDBClient(common.DbClient):
                     ON CONFLICT (symbol)
                     DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, currency = EXCLUDED.currency, valid = EXCLUDED.valid
                 """, data)
-                print(f"{self.type()} batch stockinfo insert success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch stockinfo insert success, num of data: {len(data)}")
         except duckdb.Error as e:
-            print(f"batch insert error: {e}")
+            logging.info(f"batch insert error: {e}")
 
     def batch_insert(self, data: List[Any]) -> None:
         try:
@@ -88,9 +89,9 @@ class DuckDBClient(common.DbClient):
                  DO UPDATE SET open_price = EXCLUDED.open_price, high = EXCLUDED.high, low = EXCLUDED.low, 
                  close_price = EXCLUDED.close_price, adj_close = EXCLUDED.adj_close, volume = EXCLUDED.volume
              """, data)
-                print(f"{self.type()} batch insert success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch insert success, num of data: {len(data)}")
         except duckdb.Error as e:
-            print(f"batch insert error: {e}")
+            logging.info(f"batch insert error: {e}")
 
     def store_config(self, config: dict) -> None:
         try:
@@ -102,9 +103,9 @@ class DuckDBClient(common.DbClient):
                         ON CONFLICT (key)
                         DO UPDATE SET value = EXCLUDED.value
                     """, (key, value))
-                print("Config stored successfully")
+                logging.info("Config stored successfully")
         except duckdb.Error as e:
-            print(f"Error storing config: {e}")
+            logging.info(f"Error storing config: {e}")
 
 
     def batch_update(self, data: List[Any]) -> None:
@@ -118,9 +119,9 @@ class DuckDBClient(common.DbClient):
                  rsi7 = ?, rsi14 = ?, rsi28 = ?
                  WHERE symbol = ? AND ts = ?
              """, data)
-                print(f"{self.type()} batch update success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch update success, num of data: {len(data)}")
         except duckdb.Error as e:
-            print(f"batch update error: {e}")
+            logging.info(f"batch update error: {e}")
 
     def execute(self, query: list) -> duckdb.DuckDBPyConnection:
         return self.conn.execute(query)

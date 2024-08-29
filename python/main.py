@@ -13,7 +13,10 @@ from flask import Flask, request, jsonify, g
 from functools import wraps
 import jwt
 
-logging.basicConfig(level=logging.INFO)
+log_format = '%(asctime)s - %(name)s - %(levelname)s - %(filename)s:%(lineno)d - %(message)s'
+date_format = '%Y-%m-%d %H:%M:%S'
+
+logging.basicConfig(level=logging.INFO, format=log_format, datefmt=date_format)
 
 
 class Config:
@@ -72,7 +75,7 @@ def main():
 # 写一个导入历史数据的函数
 def import_history_data(duckClient: common.DbClient, pgClient: common.DbClient, stocks: list[common.StockInfo]):
     for stock in stocks:
-        print(f"Fetching stock data for {stock.symbol}")
+        logging.info(f"Fetching stock data for {stock.symbol}")
         start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
         end = datetime.now().strftime('%Y-%m-%d')
 
