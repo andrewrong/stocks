@@ -1,3 +1,4 @@
+import logging
 import unittest
 
 import duckdb
@@ -18,7 +19,7 @@ class TestSMA(unittest.TestCase):
 
         # 测试SMA函数
         result = calc_multi_indicator(duckConn, stock, "2022-01-01", "2022-02-01")
-        print(result)
+        logging.info(result)
     def test_macd(self):
         # 模拟数据库连接
         duckConn = duckdb.connect("/Volumes/nomoshen/data/stock/stocks_2.db")
@@ -35,7 +36,7 @@ class TestSMA(unittest.TestCase):
         data = macd(dataframes)
 
         for index, ts in data['ts'].items():
-            print(ts, data["macd"]["macd"][index], data["macd"]["macd_signal"][index], data["macd"]["macd_hist"][index])
+            logging.info(ts, data["macd"]["macd"][index], data["macd"]["macd_signal"][index], data["macd"]["macd_hist"][index])
 
         # 绘制结果
         plt.figure(figsize=(14, 7))

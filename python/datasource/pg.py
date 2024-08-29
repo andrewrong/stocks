@@ -1,3 +1,5 @@
+import logging
+
 import psycopg2
 from common import common
 
@@ -60,6 +62,9 @@ class PgClient(common.DbClient):
     def close(self) -> None:
         self.conn.close()
 
+    def batch_insert_stockinfo(self, data: list) -> None:
+        pass
+
     def batch_insert(self, data: list) -> None:
         try:
             with self.conn.cursor() as cur:
@@ -74,9 +79,9 @@ class PgClient(common.DbClient):
  macd_hist = EXCLUDED.macd_hist, rsi7 = EXCLUDED.rsi7, rsi14 = EXCLUDED.rsi14, rsi28 = EXCLUDED.rsi28, bb_upper = EXCLUDED.bb_upper, bb_middle = EXCLUDED.bb_middle, bb_lower = EXCLUDED.bb_lower
              """, data)
                 self.conn.commit()
-                print(f"{self.type()} batch insert success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch insert success, num of data: {len(data)}")
         except psycopg2.Error as e:
-            print(f"batch insert error: {e}")
+            logging.info(f"batch insert error: {e}")
 
     def batch_update(self, data: list) -> None:
 
@@ -90,9 +95,9 @@ class PgClient(common.DbClient):
                  WHERE symbol = %s AND ts = %s
              """, data)
                 self.conn.commit()
-                print(f"{self.type()} batch update success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch update success, num of data: {len(data)}")
         except psycopg2.Error as e:
-            print(f"batch update error: {e}")
+            logging.info(f"batch update error: {e}")
 
     def execute(self, query: str):
 
@@ -100,7 +105,7 @@ class PgClient(common.DbClient):
             with self.conn.cursor() as cur:
                 return cur.execute(query)
         except psycopg2.Error as e:
-            print(f"pg execute error: {e}")
+            logging.info(f"pg execute error: {e}")
             return None
 
     def type(self) -> str:

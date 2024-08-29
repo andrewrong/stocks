@@ -1,3 +1,4 @@
+import logging
 from abc import ABC
 from typing import Any, List
 
@@ -6,8 +7,8 @@ from common import common
 
 
 class DuckDBClient(common.DbClient):
-    def __init__(self, db_file_path):
-        self.conn = duckdb.connect(database=db_file_path)
+    def __init__(self, db_file_path, readonly=False):
+        self.conn = duckdb.connect(database=db_file_path, read_only=readonly)
         self._create_table()
 
     def _create_table(self):
@@ -50,9 +51,33 @@ class DuckDBClient(common.DbClient):
                  PRIMARY KEY (symbol, currency, stock_name, stock_type, ts)
              )
          """)
+        self.conn.execute("""
+             CREATE TABLE IF NOT EXISTS stock_info (
+                 symbol VARCHAR,
+                 name VARCHAR,
+                 type VARCHAR,
+                 currency VARCHAR,
+                 valid BOOLEAN,
+
+                 PRIMARY KEY (symbol)
+             )
+         """)
 
     def close(self):
         self.conn.close()
+
+    def batch_insert_stockinfo(self, data: List[Any]) -> None:
+        try:
+            with self.conn.cursor() as cur:
+                cur.executemany("""
+                    INSERT INTO stock_info (symbol, name, type, currency, valid)
+                    VALUES (?, ?, ?, ?, ?)
+                    ON CONFLICT (symbol)
+                    DO UPDATE SET name = EXCLUDED.name, type = EXCLUDED.type, currency = EXCLUDED.currency, valid = EXCLUDED.valid
+                """, data)
+                logging.info(f"{self.type()} batch stockinfo insert success, num of data: {len(data)}")
+        except duckdb.Error as e:
+            logging.info(f"batch insert error: {e}")
 
     def batch_insert(self, data: List[Any]) -> None:
         try:
@@ -64,9 +89,24 @@ class DuckDBClient(common.DbClient):
                  DO UPDATE SET open_price = EXCLUDED.open_price, high = EXCLUDED.high, low = EXCLUDED.low, 
                  close_price = EXCLUDED.close_price, adj_close = EXCLUDED.adj_close, volume = EXCLUDED.volume
              """, data)
-                print(f"{self.type()} batch insert success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch insert success, num of data: {len(data)}")
         except duckdb.Error as e:
-            print(f"batch insert error: {e}")
+            logging.info(f"batch insert error: {e}")
+
+    def store_config(self, config: dict) -> None:
+        try:
+            with self.conn.cursor() as cur:
+                for key, value in config.items():
+                    cur.execute("""
+                        INSERT INTO config (key, value)
+                        VALUES (?, ?)
+                        ON CONFLICT (key)
+                        DO UPDATE SET value = EXCLUDED.value
+                    """, (key, value))
+                logging.info("Config stored successfully")
+        except duckdb.Error as e:
+            logging.info(f"Error storing config: {e}")
+
 
     def batch_update(self, data: List[Any]) -> None:
 
@@ -79,9 +119,9 @@ class DuckDBClient(common.DbClient):
                  rsi7 = ?, rsi14 = ?, rsi28 = ?
                  WHERE symbol = ? AND ts = ?
              """, data)
-                print(f"{self.type()} batch update success, num of data: {len(data)}")
+                logging.info(f"{self.type()} batch update success, num of data: {len(data)}")
         except duckdb.Error as e:
-            print(f"batch update error: {e}")
+            logging.info(f"batch update error: {e}")
 
     def execute(self, query: list) -> duckdb.DuckDBPyConnection:
         return self.conn.execute(query)

@@ -4,7 +4,8 @@ from typing import List, Dict, Any
 
 
 class StockPrice:
-    def __init__(self, ts: datetime, symbol: str, open_price: float, high: float, low: float, close_price: float, adj_close : float,
+    def __init__(self, ts: datetime, symbol: str, open_price: float, high: float, low: float, close_price: float,
+                 adj_close: float,
                  volume: float, currency: str, stock_name:
             str, stock_type: str):
         self.ts = ts
@@ -18,6 +19,7 @@ class StockPrice:
         self.currency = currency
         self.stock_name = stock_name
         self.stock_type = stock_type
+
 
 class StockType:
     INDEX = "INDEX"
@@ -112,6 +114,9 @@ class DbClient(ABC):
     @abstractmethod
     def batch_insert(self, data: List[Any]) -> None:
         pass
+    @abstractmethod
+    def batch_insert_stockinfo(self, data: List[Any]) -> None:
+        pass
 
     @abstractmethod
     def batch_update(self, data: List[Any]) -> None:
@@ -128,3 +133,5 @@ class DbClient(ABC):
     @abstractmethod
     def execute(self, query):
         pass
+
+
