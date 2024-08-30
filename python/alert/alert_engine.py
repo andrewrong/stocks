@@ -154,7 +154,7 @@ class Rule:
         res = eval(self.equation, {}, result)
         if res:
             msg_str = ", ".join(f"{key}: {value}" for key, value in msgs.items())
-            self.sender.send("name:{}, equation:{}, msg:{}".format(self.name, self.equation, msg_str))
+            await self.sender.send("name:{}, equation:{}, msg:{}".format(self.name, self.equation, msg_str))
         return res
 
 
@@ -165,7 +165,7 @@ class alertEngine:
         self.table = config['table']
         self.cron_time = config['interval']
 
-    def alert(self):
+    async def alert(self):
         sql = "select * from {}".format(self.table)
         rules = []
         tmp = self.db_client.execute(sql).fetchall()
