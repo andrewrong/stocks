@@ -12,5 +12,5 @@ class TelegramSender(Sender):
         self.chat_id = config['chat_id']
         self.bot = Bot(self.token)
 
-    def send(self, msg):
-        self.bot.send_message(chat_id=self.chat_id, text=msg)
+    async def send(self, msg):
+        await self.bot.send_message(chat_id=self.chat_id, text=msg)
