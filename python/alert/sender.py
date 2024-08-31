@@ -16,14 +16,14 @@ class TelegramSender(Sender):
         self.token = config['token']
         self.chat_id = config['chat_id']
         self.bot = Bot(self.token)
+        self.loop = asyncio.new_event_loop()
+
 
     async def send(self, msg):
         await self.bot.send_message(chat_id=self.chat_id, text=msg)
 
     def sync_send(self, msg):
-        loop = asyncio.new_event_loop()
-        asyncio.set_event_loop(loop)
         try:
-            loop.run_until_complete(self.send(msg))
+            self.loop.run_until_complete(self.send(msg))
         finally:
-            loop.close()
+            self.loop.close()
