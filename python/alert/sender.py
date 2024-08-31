@@ -1,8 +1,13 @@
+import asyncio
+
 from telegram import Bot
 
 
 class Sender:
-    def send(self, rule):
+    async def send(self, rule):
+        raise NotImplementedError("Send method not implemented.")
+
+    def sync_send(self, msg):
         raise NotImplementedError("Send method not implemented.")
 
 
@@ -14,3 +19,6 @@ class TelegramSender(Sender):
 
     async def send(self, msg):
         await self.bot.send_message(chat_id=self.chat_id, text=msg)
+
+    def sync_send(self, msg):
+        asyncio.run(self.send(msg))
