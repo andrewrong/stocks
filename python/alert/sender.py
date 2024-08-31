@@ -21,12 +21,9 @@ class TelegramSender(Sender):
         await self.bot.send_message(chat_id=self.chat_id, text=msg)
 
     def sync_send(self, msg):
+        loop = asyncio.new_event_loop()
+        asyncio.set_event_loop(loop)
         try:
-            loop = asyncio.get_running_loop()
-        except RuntimeError:
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        if loop.is_closed():
-            loop = asyncio.new_event_loop()
-            asyncio.set_event_loop(loop)
-        loop.run_until_complete(self.send(msg))
+            loop.run_until_complete(self.send(msg))
+        finally:
+            loop.close()
