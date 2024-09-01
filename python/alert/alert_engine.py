@@ -7,6 +7,7 @@ from abc import ABC, abstractmethod
 import common.common
 from alert.alert_func import threshold, direction_threshold
 from alert.sender import Sender, TelegramSender
+from cachetools import TTLCache
 
 
 class ConditionType(Enum):
@@ -111,8 +112,8 @@ class Condition:
 class RuleItem:
     def __init__(self, config):
         self.datapoint_num = config.get('datapoint_num')
-        self.AType = SourceType(config.get('AType'))
 
+        self.AType = SourceType(config.get('AType'))
         if self.AType == SourceType.SQL:
             self.A = SourceSQL(config.get('A')['sql'], config.get('A')['stock'], config.get('A')['field'],
                                config.get('A')['table'])
@@ -123,11 +124,13 @@ class RuleItem:
 
         self.BType = SourceType(config.get('BType'))
         if self.BType == SourceType.SQL:
-            self.B = SourceSQL(config.get('B')['sql'], config.get('A')['stock_symbol'])
+            self.B = SourceSQL(config.get('B')['sql'], config.get('B')['stock'], config.get('B')['field'],
+                               config.get('B')['table'])
         elif self.BType == SourceType.CONST:
             self.B = SourceConst(config.get('B')['threshold'])
         else:
             logging.fatal("Unsupported source type: %s", self.BType)
+
         self.condition = Condition(ConditionType(config.get('condition')['type']), config.get('condition')['value'],
                                    config.get('condition')['msg'])
 
@@ -142,7 +145,7 @@ class Rule:
         self.equation = config.get('equation')
         self.sender = sender
 
-    def evaluate(self, data_source):
+    def evaluate(self, data_source, cache: TTLCache):
         item_evaluations = {key: rule_item.evaluate(data_source) for key, rule_item in self.rule_items.items()}
         result = {}
         msgs = {}
@@ -152,10 +155,32 @@ class Rule:
             msgs[key] = item[1]
 
         res = eval(self.equation, {}, result)
+
         if res:
-            msg_str = ", ".join(f"{key}: {value}" for key, value in msgs.items())
-            await self.sender.send("name:{}, equation:{}, msg:{}".format(self.name, self.equation, msg_str))
+            # should alert
+            should_alert = self.should_alert(self.name, cache)
+            if not should_alert:
+                logging.info("alert is restrain, name: %s, equation: %s", self.name, self.equation)
+                return res
+            self.set_alert(self.name, cache)
+
+            msg_str = "\n".join(f"* {key}: {value}" for key, value in msgs.items())
+            self.sender.sync_send(
+                "time:{}, \nname:{}, \nequation:{}, \nmsg:\n{}".format(datetime.now().strftime('%Y-%m-%d %H:%M:%S'),
+                                                                       self.name, self.equation, msg_str))
         return res
+
+    def should_alert(self, rule_name: str, cache: TTLCache) -> bool:
+        now_day = datetime.now().strftime("%Y-%m-%d")
+        key = "{}_{}".format(rule_name, now_day)
+        if key in cache:
+            return False
+        return True
+
+    def set_alert(self, rule_name: str, cache: TTLCache):
+        now_day = datetime.now().strftime("%Y-%m-%d")
+        key = "{}_{}".format(rule_name, now_day)
+        cache[key] = True
 
 
 class alertEngine:
@@ -164,8 +189,9 @@ class alertEngine:
         self.db_client = db_client
         self.table = config['table']
         self.cron_time = config['interval']
+        self.rule_cache = TTLCache(maxsize=1000, ttl=24 * 60 * 60)
 
-    async def alert(self):
+    def alert(self):
         sql = "select * from {}".format(self.table)
         rules = []
         tmp = self.db_client.execute(sql).fetchall()
@@ -173,5 +199,5 @@ class alertEngine:
             ruleData = json.loads(rule[2])
             rules.append(Rule(ruleData, self.sender))
         for rule in rules:
-            r = rule.evaluate(self.db_client)
+            r = rule.evaluate(self.db_client, self.rule_cache)
             logging.info("name:{} judge result:{}".format(rule.name, r))

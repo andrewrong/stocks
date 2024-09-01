@@ -9,6 +9,8 @@ import compute.indicator
 from common import common
 from datasource.ddb import DuckDBClient
 from datasource.pg import PgClient
+from alert import alert_engine
+from string import Template
 from flask import Flask, request, jsonify, g
 from functools import wraps
 import jwt
@@ -28,6 +30,7 @@ class Config:
         self.cron_time = config['cron_time']
         self.data_source_cfg = config['data_source']
         self.http_token = config['http_token']
+        self.alert_config = config['alert']
 
         duckdb_client = DuckDBClient(config['data_source']['duckdb_cfg']['db_file'])
         try:
@@ -52,13 +55,19 @@ def main():
     config = Config('config.json')
     dbClient = DuckDBClient(config.data_source_cfg['duckdb_cfg']['db_file'])
     pgClient = PgClient(config.data_source_cfg['pg_cfg'])
-    start_date = datetime.strptime(config.import_history_date, '%Y-%m-%d')
-    history = start_date.timestamp() * 1000
+
+    alerts = dbClient.execute("select * from stock_alert").fetchall()
+    if alerts is None or len(alerts) == 0:
+        import_rule(dbClient)
+
+    engine = alert_engine.alertEngine(config.alert_config, dbClient)
 
     scheduler = BackgroundScheduler()
     scheduler.add_job(func=lambda: fetch_and_store_stock_data(dbClient, pgClient, config.stocks),
+                      name="fetch_and_store_stock_data",
                       trigger='cron',
                       **config.cron_time)
+    scheduler.add_job(func=lambda: engine.alert(), trigger='cron', name="alert", **config.alert_config['interval'])
     scheduler.start()
 
     try:
@@ -104,8 +113,11 @@ def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClien
     for stock in stocks:
         query = f"SELECT MAX(ts) FROM stock_prices WHERE symbol = '{stock.symbol}'"
         result = client.execute(query).fetchone()
-        start = result[0].strftime('%Y-%m-%d') if result[0] else (datetime.now() - timedelta(days=2)).strftime(
-            '%Y-%m-%d')
+        if result is None:
+            logging.warning(f"No data fetched for {stock.symbol}")
+            start = (datetime.now() - timedelta(days=100 * 365)).strftime('%Y-%m-%d')
+        else:
+            start = result[0].strftime('%Y-%m-%d')
         end = (datetime.now() + timedelta(days=1)).strftime('%Y-%m-%d')
 
         logging.info(f"Fetching stock data for {stock.symbol} from {start} to {end}")
@@ -130,7 +142,7 @@ def fetch_and_store_stock_data(client: common.DbClient, pgClient: common.DbClien
 
         # step 3
         logging.info(f"convert to pg, start:{start}, end:{end}")
-        duckdb_to_pg(client, pgClient, stock, start, end)
+        # duckdb_to_pg(client, pgClient, stock, start, end)
 
 
 def calculate_indicator_with_duckdb(client: common.DbClient, stock: common.StockInfo, start: str,
@@ -274,6 +286,282 @@ def duckdb_to_pg(duckClient: common.DbClient, pgClient: common.DbClient, stock: 
 #         return jsonify({'message': 'Stock deleted'}), 200
 #
 #     return app
+
+# 导入报警规则
+
+def import_rule(dbClient: common.DbClient):
+    logging.info("Importing rule")
+    rule1 = (Template("$symbol"), Template("${symbol}_rsi_up_and_down"), Template("""
+        {
+            "name": "${symbol}_rsi_up_and_down",
+            "ruleItems": {
+	            "A": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi14) as 'rsi14' from {} where adj_close != 0 and rsi14 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi14",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 30
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A down B",
+	                    "msg": "code:${symbol} name:${name} metric: rsi14 A 下穿 B, ts: {}, A: {}, B: {}, 需要关注是否要买入！！！"
+	                }
+	            },
+	            "B": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi14) as 'rsi14' from {} where adj_close != 0 and rsi14 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi14",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 30
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A up B",
+	                    "msg": "code:${symbol} name:${name} metric: rsi14 A 上穿 B, ts: {}, A: {}, B: {}, 需要关注是否要买入！！！"
+	                }
+	            },
+	            "C": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi14) as 'rsi14' from {} where adj_close != 0 and rsi14 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi14",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 70
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A up B",
+	                    "msg": "code:${symbol} name:${name} metric: rsi14 A 上穿 B, ts: {}, A: {}, B: {}, 需要关注是否要卖出！！"
+	                }
+	            },
+	            "D": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi14) as 'rsi14' from {} where adj_close != 0 and rsi14 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi14",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 70
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A down B",
+	                    "msg": "code:${symbol} name:${name} metric: rsi14 A 下穿 B, ts: {}, A: {}, B: {}, 需要关注是否要卖出！！"
+	                }
+	            },
+	            "E": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi28) as 'rsi28' from {} where adj_close != 0 and rsi28 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi28",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 30
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A down B",
+	                    "msg": "code: ${symbol} name:${name} metric: rsi28 A 下穿 B, ts: {}, A: {}, B: {}, 需要关注是否要买入！！！"
+	                }
+	            },
+	            "F": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi28) as 'rsi28' from {} where adj_close != 0 and rsi28 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi28",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 30
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A up B",
+	                    "msg": "code: ${symbol} name:${name} metric: rsi28 A 上穿 B, ts: {}, A: {}, B: {}, 需要关注是否要买入！！！"
+	                }
+	            },
+	            "G": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi28) as 'rsi28' from {} where adj_close != 0 and rsi28 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi28",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 70
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A up B",
+	                    "msg": "code: ${symbol} name:${name} metric: rsi28 A 上穿 B, ts: {}, A: {}, B: {}, 需要关注是否要卖出！！"
+	                }
+	            },
+	            "H": {
+	                "datapoint_num": 3,
+	                "AType": "sql",
+	                "A": {
+	            	    "sql": "select Max(ts) as 'ts', MAX(rsi28) as 'rsi28' from {} where adj_close != 0 and rsi28 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+	            	    "stock": "${symbol}",
+	            	    "field": "rsi28",
+	            	    "table": "stock_prices"
+	                },
+	                "BType": "const",
+	                "B": {
+	            	    "threshold": 70
+	                },
+	                "condition": {
+	            	    "type": "direction_threshold",
+	            	    "value": "A down B",
+	                    "msg": "code: ${symbol} name:${name} metric: rsi28 A 下穿 B, ts: {}, A: {}, B: {}, 需要关注是否要卖出！！"
+	                }
+	            }
+            },
+            "equation": "A or B or C or D or E or F or G or H"
+        }
+    """))
+    rule2 = (Template("$symbol"), Template("${symbol}_sma200_up_and_down"), Template("""
+            {
+                "name": "${symbol}_sma200_up_and_down",
+                "ruleItems": {
+    	            "A": {
+    	                "datapoint_num": 3,
+    	                "AType": "sql",
+    	                "A": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(adj_close) as 'adj_close' from {} where adj_close is not null and adj_close != 0 and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "adj_close",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "BType": "sql",
+    	                "B": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma200) as 'sma200' from {} where adj_close != 0 and sma200 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma200",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "condition": {
+    	            	    "type": "direction_threshold",
+    	            	    "value": "A down B",
+    	                    "msg": "code:${symbol} name:${name} metric:  A (现价) 下穿 B (200均线), ts: {}, A: {}, B: {}, 需要关注一下，看是否有买入机会！！！"
+    	                }
+    	            }, 
+    	            "B": {
+    	                "datapoint_num": 3,
+    	                "AType": "sql",
+    	                "A": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(adj_close) as 'adj_close' from {} where adj_close is not null and adj_close != 0 and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "adj_close",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "BType": "sql",
+    	                "B": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma200) as 'sma200' from {} where adj_close != 0 and sma200 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma200",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "condition": {
+    	            	    "type": "direction_threshold",
+    	            	    "value": "A up B",
+    	                    "msg": "code:${symbol} name:${name} metric: A (现价) 上穿 B (200均线), ts: {}, A: {}, B: {}, 需要关注, 当前价格上穿200日均线，趋势可能反转，需要关注是否可以买入！！！"
+    	                }
+    	            }, 
+    	            "C": {
+    	                "datapoint_num": 3,
+    	                "AType": "sql",
+    	                "A": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma20) as 'sma20' from {} where adj_close != 0 and sma20 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma20",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "BType": "sql",
+    	                "B": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma200) as 'sma200' from {} where adj_close != 0 and sma200 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma200",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "condition": {
+    	            	    "type": "direction_threshold",
+    	            	    "value": "A down B",
+    	                    "msg": "code:${symbol} name:${name} metric:  A (20日均线) 下穿 B (200日均线), ts: {}, A: {}, B: {}, 短期趋势突破长期趋势，趋势走向下跌，看是否要卖出"
+    	                }
+    	            },
+    	            "D": {
+    	                "datapoint_num": 3,
+    	                "AType": "sql",
+    	                "A": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma20) as 'sma20' from {} where adj_close != 0 and sma20 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma20",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "BType": "sql",
+    	                "B": {
+    	            	    "sql": "select Max(ts) as 'ts', MAX(sma200) as 'sma200' from {} where adj_close != 0 and sma200 is not null and symbol = '{}' and ts >= '{}' and ts <= '{}' group by ts order by ts",
+    	            	    "stock": "${symbol}",
+    	            	    "field": "sma200",
+    	            	    "table": "stock_prices"
+    	                },
+    	                "condition": {
+    	            	    "type": "direction_threshold",
+    	            	    "value": "A up B",
+    	                    "msg": "code:${symbol} name:${name} metric: A (20日均线) 上穿 B (200日均线), ts: {}, A: {}, B: {}, 短期趋势上穿长期趋势，趋势走向上，看是否要买入"
+    	                }
+    	            }
+                },
+                "equation": "A or B or C or D"
+            }
+        """))
+    alert_rules = [rule1, rule2]
+
+    rules = []
+    infos = dbClient.execute("select * from stock_info").fetchall()
+
+    for info in infos:
+        m = {
+            'symbol': info[0],
+            'name': info[1]
+        }
+
+        for rule in alert_rules:
+            rules.append((rule[0].substitute(m), rule[1].substitute(m), rule[2].substitute(m)))
+
+    dbClient.batch_insert_alert(rules)
 
 
 if __name__ == "__main__":

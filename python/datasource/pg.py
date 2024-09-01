@@ -64,6 +64,8 @@ class PgClient(common.DbClient):
 
     def batch_insert_stockinfo(self, data: list) -> None:
         pass
+    def batch_insert_alert(self, data: list) -> None:
+        pass
 
     def batch_insert(self, data: list) -> None:
         try:

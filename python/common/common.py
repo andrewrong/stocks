@@ -117,6 +117,9 @@ class DbClient(ABC):
     @abstractmethod
     def batch_insert_stockinfo(self, data: List[Any]) -> None:
         pass
+    @abstractmethod
+    def batch_insert_alert(self, data: List[Any]) -> None:
+        pass
 
     @abstractmethod
     def batch_update(self, data: List[Any]) -> None:
